@@ -179,27 +179,46 @@ double cudaScanThrust(int* inarray, int* end, int* resultarray) {
 }
 
 
+
 // find_repeats --
 //
 // Given an array of integers `device_input`, returns an array of all
 // indices `i` for which `device_input[i] == device_input[i+1]`.
 //
 // Returns the total number of pairs found
+__global__ void flag_repeats_kernel(int N, int* input, int* output) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N - 1) {
+        output[index] = (input[index] == input[index + 1] ? 1 : 0);
+    }
+}
+
+__global__ void find_increase_kernel(int N, int* scanned_flags, int* output) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N - 1) {
+        if (scanned_flags[index + 1] > scanned_flags[index]) {
+            output[scanned_flags[index]] = index;
+        }
+    }
+}
+
 int find_repeats(int* device_input, int length, int* device_output) {
+    int N = nextPow2(length);
 
-    // CS149 TODO:
-    //
-    // Implement this function. You will probably want to
-    // make use of one or more calls to exclusive_scan(), as well as
-    // additional CUDA kernel launches.
-    //
-    // Note: As in the scan code, the calling code ensures that
-    // allocated arrays are a power of 2 in size, so you can use your
-    // exclusive_scan function with them. However, your implementation
-    // must ensure that the results of find_repeats are correct given
-    // the actual array length.
+    int* flags;
+    cudaMalloc(&flags, sizeof(int) * N);
 
-    return 0;
+    int blocks = ceil_div(length, THREADS_PER_BLOCK);
+    flag_repeats_kernel<<<blocks, THREADS_PER_BLOCK>>>(length, device_input, flags);
+    cudaDeviceSynchronize();
+    exclusive_scan(flags, length, flags);
+    find_increase_kernel<<<blocks, THREADS_PER_BLOCK>>>(length, flags, device_output);
+
+    int result;
+    cudaMemcpy(&result, flags + length - 1, sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(flags);
+    return result;
 }
 
 
