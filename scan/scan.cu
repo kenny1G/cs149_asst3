@@ -193,11 +193,11 @@ __global__ void flag_repeats_kernel(int N, int* input, int* output) {
     }
 }
 
-__global__ void find_increase_kernel(int N, int* scanned_flags, int* output) {
+__global__ void find_increase_kernel(int N, int* prefix_sum, int* output) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < N - 1) {
-        if (scanned_flags[index + 1] > scanned_flags[index]) {
-            output[scanned_flags[index]] = index;
+        if (prefix_sum[index + 1] > prefix_sum[index]) {
+            output[prefix_sum[index]] = index;
         }
     }
 }
