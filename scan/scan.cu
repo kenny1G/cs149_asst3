@@ -27,6 +27,9 @@ static inline int nextPow2(int n) {
     return n;
 }
 
+static inline int ceil_div(int x, int y) {
+    return (x + y - 1) / y;
+}
 // exclusive_scan --
 //
 // Implementation of an exclusive scan on global memory array `input`,
@@ -42,20 +45,53 @@ static inline int nextPow2(int n) {
 // Also, as per the comments in cudaScan(), you can implement an
 // "in-place" scan, since the timing harness makes a copy of input and
 // places it in result
+__global__ void upsweep_kernel(int N, int two_d, int *output) {
+    // state: the depth of the tree we're at
+    int two_dplus1 = 2 * two_d;
+    int i = (blockIdx.x * blockDim.x + threadIdx.x) * two_dplus1;
+    // invariants: the elements that get added at each depth
+    if (i < N)
+        output[i + two_dplus1 - 1] += output[i + two_d -1];
+}
+
+__global__ void downsweep_kernel(int N, int two_d, int *output) {
+    int two_dplus1 = 2 * two_d;
+    int i = (blockIdx.x * blockDim.x + threadIdx.x) * two_dplus1;
+    if (i < N) {
+        int t = output[i+two_d-1];
+        output[i+two_d-1] = output[i+two_dplus1-1];
+        output[i+two_dplus1-1] += t;
+    }
+
+}
 void exclusive_scan(int* input, int N, int* result)
 {
+    N = nextPow2(N);
+    // upsweep phase
+    for (int two_d = 1; two_d <= N/2; two_d*=2)
+    {
+        int two_dplus1 = 2 * two_d;
 
-    // CS149 TODO:
-    //
-    // Implement your exclusive scan implementation here.  Keep in
-    // mind that although the arguments to this function are device
-    // allocated arrays, this is a function that is running in a thread
-    // on the CPU.  Your implementation will need to make multiple calls
-    // to CUDA kernel functions (that you must write) to implement the
-    // scan.
-    printf("exclusive_scan on array of size %d\n", N);
-    cudaFree(result);
-    cudaFree(input);
+        // parallel for
+        int num_threads = N / two_dplus1;
+        int num_blocks = ceil_div(num_threads, THREADS_PER_BLOCK);
+        upsweep_kernel<<<num_blocks, num_blocks == 1 ? num_threads : THREADS_PER_BLOCK>>>(N, two_d, result);
+        cudaDeviceSynchronize();
+    }
+
+    cudaMemset(&result[N-1], 0, sizeof(int));
+
+    //downsweep phase
+    for (int two_d = N/2; two_d >= 1; two_d /=2 )
+    {
+        int two_dplus1 = 2 * two_d;
+
+        // parallel for
+        int num_threads = N / two_dplus1;
+        int num_blocks = ceil_div(num_threads, THREADS_PER_BLOCK);
+        downsweep_kernel<<<num_blocks, num_blocks == 1 ? num_threads : THREADS_PER_BLOCK>>>(N, two_d, result);
+        cudaDeviceSynchronize();
+    }
     return;
 }
 
