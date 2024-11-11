@@ -19,7 +19,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////
 
 // variables needed to parallelize
-#define CELL_DIM 32
+#define CELL_DIM 64
 #define SCAN_BLOCK_DIM CELL_DIM * CELL_DIM
 
 struct GlobalConstants {
